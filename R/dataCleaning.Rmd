@@ -1,0 +1,643 @@
+---
+title: "数据清洗0923"
+author: "goatbishop"
+date: "2020年9月23日"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, message = FALSE, warning = FALSE)
+```
+
+
+### 导包
+
+
+```{r results = "hide"}
+library(VIM)
+library(mice)
+library(readr)
+library(psych)
+library(fpc)
+library(lattice)
+library(MASS)
+```
+
+
+### 自定义函数
+
+
+```{r}
+
+#统计行/列 缺失值函数
+countNaN <- function(myline) {
+  return(sum(is.na(myline)))
+}
+
+#定位函数
+#dataF只能传递矩阵或者数据框
+myPosition <- function(dataF, flag = T) {
+  posmtr <- matrix(0, ncol = 2)
+  colnames(posmtr) <- c("rowNum", "colNum")
+  numberCol <- dim(dataF)[2]
+  numberRow <- dim(dataF)[1]
+  for (item in c(1:numberCol)) {
+    targetIndex <- which(dataF[, item])
+    lenTar <- length(targetIndex)
+    tempMatrix <- data.frame(rowNum = targetIndex, colNum = rep(item, lenTar))
+    posmtr <- rbind(posmtr, tempMatrix)
+  }
+  posmtr <- posmtr[-1, ]
+  return(posmtr)
+}
+
+#回归函数
+
+myregression <- function(vectorX, vectorY, newX) {
+  print(vectorX)
+  print(vectorY)
+  lmtemp <- lm(vectorY ~ vectorX)
+  print(lmtemp$coef)
+  pre <- predict(lmtemp, data.frame(vectorX = newX))
+  newY <- pre
+  return(newY)
+}
+
+
+```
+
+
+
+
+### 读取数据
+
+```{r}
+mydata <- read.csv("../RawData0923.csv")
+
+
+dim(mydata) #1100 24
+
+head(mydata)
+#str(mydata)
+```
+
+可以看到共有1100条数据,共有110个城市,十年的数据,且原本应该为数值型的变量，却显示为字符型，说明数据中可能存在字符型数据。
+
+
+<br>
+
+### 整理数据
+
+将数据中有#DIV/0!和0的设置为缺失值
+
+```{r}
+mydata2 <- mydata
+
+for (item in c(2:length(mydata2))) {
+  data_type <- class(mydata2[, item])
+  if (data_type == "character") {
+    temp_dataL <- mydata2[, item]
+    temp_dataL[which(temp_dataL == "#DIV/0!")] = NA
+    #第二次修改后增加
+    temp_dataL[which(temp_dataL == 0)] = NA
+    mydata2[, item] <- as.numeric(temp_dataL)
+  }
+}
+
+str(mydata)
+str(mydata2)
+
+```
+
+
+<br>
+
+
+查看整体的缺失值情况：
+```{r}
+length(which(complete.cases(mydata2))) #502
+```
+
+可以看到总共有502个观测是完整的。
+
+
+绘制缺失值图：
+
+```{r}
+#png("../images/缺失值图1.png")
+aggr(mydata2, prop = F, numbers = T)
+#dev.off()
+```
+
+
+查看各个变量的缺失值情况:
+
+```{r}
+
+cNa <- apply(mydata2, 2, countNaN)
+cNa[which(cNa > 0)]
+```
+
+可以看到, 变量urbanRat缺失了399个数据, incomeRatUrbanRural缺失了154个数据, socSecEmployExpend缺失了89个数据, numCollegeStu缺失了80个数据.
+
+<br>
+
+### 考察变量间的相关性
+
+<br>
+
+```{r}
+#剔除年份和城市两个无关变量再计算相关系数
+testdata <- mydata2[, -c(1, 2)]
+#只保留完整数据行进行相关性分析
+comdata01 <- testdata[which(complete.cases(testdata)== T), ]
+#有524条完整记录
+dim(comdata01) #524  22
+
+#计算相关系数
+#cor(comdata01)
+
+#相关系数大于0.6的返回True
+outcor <- cor(comdata01) > 0.6
+write.csv(outcor, "../output/outcor.csv")
+write.csv(cor(comdata01), "../output/realcor.csv")
+
+
+PosCor <- myPosition(outcor, T)
+
+new_cor_big_name <- data.frame(rowname = colnames(outcor)[PosCor[, 1]], 
+                               colname = colnames(outcor)[PosCor[, 2]])
+
+
+```
+
+
+由结果可知，相关系数较高的变量为：
+pro3industryGdp     realGdpPerCapita;
+nonAgriDevDegree    realGdpPerCapita;
+urbanRat            realGdpPerCapita;
+libCollect          realGdpPerCapita;
+advIndexIndusStruc  pro3industryGdp
+urbanRat            pro3industryGdp
+libCollect          pro3industryGdp
+numHospBed          pro3industryGdp
+numHospBed          advIndexIndusStruc
+urbanRat            nonAgriDevDegree
+libCollect          urbanRat
+libCollect          amoforeCapUtil
+socSecEmployExpend  amoforeCapUtil
+
+
+
+
+查看每年的缺失值数：
+
+
+```{r}
+
+complete_data <- c()
+for (item in c(2018:2009)) {
+  dataYear <- subset(mydata2, year == item)
+  #print(dim(dataYear))
+  len_complete <- length(which(complete.cases(dataYear) == T))
+  complete_data <- c(complete_data, len_complete)
+}
+
+
+print(complete_data)
+
+```
+
+
+可以看到2018年只有39条数据是完整的，2016年只有39条是完整的，其他年份也分别有大量数据丢失。
+
+
+<br>
+
+再次查看每年具体有多少数据丢失：
+
+```{r}
+missingdf <- as.data.frame(abs(is.na(mydata2)))
+#dim(missingdf)
+missingnum = c()
+for (i in c(1:10)) {
+  tempdata <- missingdf[(110*(i-1)+1):(110*i), ]
+  num <- sum(tempdata)
+  missingnum <- c(missingnum, num)  
+}
+print(missingnum)
+
+```
+
+
+可以看到2018年有163个缺失值, 2016年有143个缺失值, 2015年有132个缺失值, 2014年有128个缺失值。
+
+
+<br>
+
+
+现在对城市数据的缺失值进行考察：
+
+```{r result = 'asis'}
+library(knitr)
+
+cityname <- names(table(mydata2$city))
+missingnum <- c()
+for ( i in c(1:length(cityname))) {
+  tempdata <- subset(mydata2, city == cityname[i])
+  num <- length(which(complete.cases(tempdata) == F))
+  missingnum <- c(missingnum, num)
+}
+citydf <- data.frame(cityname = cityname, missing =missingnum)
+#print(citydf)
+kable(citydf[which(citydf$missing >= 1), ], caption = "有数据缺失的城市")
+```
+
+
+<br>
+
+我们看到有些城市在10年中没有一条完整的数据,可能是因为这个城市的某个变量因为个各种原因没有被记录.
+
+<br>
+
+
+### 针对变量进行处理
+
+
+```{r}
+
+missingdf <- as.data.frame(abs(is.na(mydata2)))
+varmissing <- apply(missingdf, 2, sum)
+varmissing
+
+```
+
+
+可以看到：
+incomeRatUrbanRural缺失了154条数据
+urbanRat缺失了399条数据
+numCollegeStu缺失了80条数据
+socSecEmployExpend缺失了89条数据
+
+
+现在，我们对缺失值数大于等于50的变量进行删除：
+
+```{r}
+delete_value_number <- which(varmissing >= 50)
+
+testdata2 <- mydata2[, -delete_value_number]
+#str(testdata2)
+length(which(complete.cases(testdata2))) #951
+```
+
+
+可以看到当我们删除这4列时,我们有951行完整数据，比之前的524行多了427行.
+
+<br>
+
+
+### 一元回归模型
+
+
+<br>
+
+```{r}
+varname <- colnames(mydata2)
+mydataTemp <- mydata2
+yearColNum <- which("year" == varname)
+
+#针对每个城市的每一个变量，我们用一元线性回归模型进行填补
+#标准是：在10条数据中(以年份为自变量)，缺失数据必须小于等于4大于0，才能进行填补
+#如果不满足该条件，那么我们就跳过，之后再处理
+
+for (i in c(1:length(cityname))) {
+  for (y in c(3:length(varname))) {
+    tempv <- mydataTemp[which(mydataTemp$city == cityname[i]), c(yearColNum, y)]
+    numcom <- length(which(complete.cases(tempv)))
+    if (numcom >= 6 & numcom <= 9) {
+      newX <- tempv[which(!complete.cases(tempv)), 1]
+      vecX <- tempv[which(complete.cases(tempv)), 1]
+      vecY <- tempv[which(complete.cases(tempv)), 2]
+      newY <- myregression(vecX, vecY, newX)
+      if (min(vecY) > 0 & min(newY) < 0 ) {
+        print("预测异常...")
+        next
+      }
+      #print(newX)
+      #print(newY)
+      #print("+++++++")
+      tempv[which(!complete.cases(tempv)), 2] <- newY
+      mydataTemp[which(mydataTemp$city == cityname[i]), c(yearColNum, y)] <- tempv
+    } else {
+      next
+    } 
+    
+  }
+}
+
+```
+
+
+
+查看当前缺失值图：
+
+```{r}
+aggr(mydataTemp, prop = F, numbers = T)
+```
+
+
+再次计算每个变量的缺失值数量：
+
+```{r}
+missingdf2 <- as.data.frame(abs(is.na(mydataTemp)))
+varmissing2 <- apply(missingdf2, 2, sum)
+varmissing2
+```
+
+
+可以看到各个变量的缺失值数目均减少, 只有urbanRat变量含有100个以上的缺失值,而numCollegeStu有35个缺失值, socSecEmployExpend有25,nonAgriDevDegree有23个缺失值,ratIndexIndusStruc有23个缺失值,对于这些,我们需要进行进一步处理。
+
+
+<br>
+
+输出部分结果：
+```{r}
+write.csv(mydataTemp, "../output/mydataTemp0923.csv")
+```
+
+
+
+### 主成分分析
+
+<br>
+
+创建完整的数据集：
+
+```{r}
+tempdata <- mydataTemp[which(complete.cases(mydataTemp)) , ]
+rownames(tempdata) <- paste(tempdata$city, tempdata$year, sep = "")
+
+
+#head(tempdata, 10)
+#head(mydata2, 10)
+compeledata1 <- tempdata[, -c(1, 2)]
+
+#summary(compeledata1)
+#dim(compeledata1)
+
+#head(tempdata$city, 10)
+head(paste(tempdata$city, tempdata$year, sep = ""), 10)
+
+```
+
+
+中心化标准化数据：
+```{r}
+scaledata <- scale(compeledata1, center=T,scale=T)
+fa.parallel(scaledata, fa = "pc")
+```
+
+
+通过碎石土，选取特征值大于1的主成分，即前前5个主成分。
+
+
+
+<br>
+
+主成分分析:
+```{r}
+pc <- principal(scaledata, nfactors = 5, scores = T)
+pc$loadings
+```
+
+
+主成分分析方法适用于变量之间存在较强相关性的数据,如果原始数据相关性较弱，运用主成分分析后不能起到很好的降维作用,从另一个角度看，主成分不仅可以进行降维，还可以对变量之间的相关性进行检验,我们观察因子载荷矩阵(在一个主成分中，对主成分影响较大的几个变量之间相关性较强,且有时候在理论上具有一些相似的特性)：
+realGdpPerCapita与nonAgriDevDegree,ratIndexIndusStruc,amoforeCapUtil,
+foreTradeCoef,libCollect和urbanRat有较强的相关性(RC1)
+pro2industryGdp与pro3industryGdp,advIndexIndusStruc,socSecEmployExpend和numHospBed有较强的相关性(RC2)
+gdpGrowthRate与proSocLab, incomeRatUrbanRural和dischaIndusWaste有较强的相关性(RC3)
+proTechEduExpendGdp与PowConsumpPerGdpL有较强的相关性(RC4)
+foreTradeCoef与numCollegeStu,PowConsumpPerGdpL有较强的相关性(RC5)
+
+
+现在我们保存这个载荷矩阵:
+```{r}
+write.csv(pc$loadings, "../output/因子载荷矩阵0923.csv")
+```
+
+
+三个城市群进行回归分析：
+
+```{r}
+
+cityColNum <- which("city" == varname)
+mydataTemp2 <- mydataTemp
+numlib <- c(0, 41, 77, 110)
+cityname2 <- mydataTemp[1:110, cityColNum]
+
+urbanRatNameIndex <- which(colnames(mydataTemp) == "urbanRat")
+numCollegeStuNameIndex <- which(colnames(mydataTemp) == "numCollegeStu")
+socSecEmployExpendNameIndex <- which(colnames(mydataTemp) == "socSecEmployExpend")
+nonAgriDevDegreeNameIndex <- which(colnames(mydataTemp) == "nonAgriDevDegree")
+ratIndexIndusStrucNameIndex <- which(colnames(mydataTemp) == "ratIndexIndusStruc")
+
+# realGdpPerCapita与nonAgriDevDegree,ratIndexIndusStruc,amoforeCapUtil,
+# foreTradeCoef,libCollect和urbanRat有较强的相关性(RC1)
+# pro2industryGdp与pro3industryGdp,advIndexIndusStruc,socSecEmployExpend和numHospBed有较强的相关性(RC2)
+# gdpGrowthRate与proSocLab, incomeRatUrbanRural和dischaIndusWaste有较强的相关性(RC3)
+# proTechEduExpendGdp与PowConsumpPerGdpL有较强的相关性(RC4)
+# foreTradeCoef与numCollegeStu,PowConsumpPerGdpL有较强的相关性(RC5)
+
+# urbanRat变量含有100个以上的缺失值
+# numCollegeStu有35个缺失值
+# socSecEmployExpend有25个缺失值
+# nonAgriDevDegree有23个缺失值
+# ratIndexIndusStruc有23个缺失值
+
+for (i in c(1:3)) {
+  tempdatalm <- mydataTemp2[which(mydataTemp2$city %in% cityname2[(numlib[i]+1):numlib[i+1]]), ]
+  #print((numlib[i]+1):numlib[i+1])
+  trainU <- tempdatalm[which(complete.cases(tempdatalm$urbanRat)), ]
+  testU <- tempdatalm[which(!complete.cases(tempdatalm$urbanRat)), ]
+  
+  if (dim(testU)[1] != 0) {
+    print(paste("我执行了1", i, sep = "-"))
+    lm1 <- lm(urbanRat ~ amoforeCapUtil + libCollect + foreTradeCoef + realGdpPerCapita,
+              data = trainU)
+    pre1 <- predict(lm1, testU)
+    #print(pre1)
+    
+    #赋值
+    tempdatalm[which(!complete.cases(tempdatalm$urbanRat)), urbanRatNameIndex] <- pre1    
+  }
+  
+  
+  #socSecEmployExpend与pro2industryGdp,advIndexIndusStruc和amoforeCapUtil
+  trainU <- tempdatalm[which(complete.cases(tempdatalm$numCollegeStu)), ]
+  testU <- tempdatalm[which(!complete.cases(tempdatalm$numCollegeStu)), ]
+  
+  if (dim(testU)[1] != 0) {
+    print(paste("我执行了2", i, sep = "-"))
+    lm1 <- lm(numCollegeStu ~ PowConsumpPerGdpL + foreTradeCoef,
+              data = trainU)
+    pre1 <- predict(lm1, testU)
+    #print(pre1)
+    tempdatalm[which(!complete.cases(tempdatalm$numCollegeStu)), numCollegeStuNameIndex] <- pre1    
+  }
+  
+  
+  trainU <- tempdatalm[which(complete.cases(tempdatalm$socSecEmployExpend)), ]
+  testU <- tempdatalm[which(!complete.cases(tempdatalm$socSecEmployExpend)), ]
+  
+  if (dim(testU)[1] != 0) {
+    print(paste("我执行了3", i, sep = "-"))
+    #pro2industryGdp与pro3industryGdp,advIndexIndusStruc,socSecEmployExpend和numHospBed
+    lm1 <- lm(formula = socSecEmployExpend ~ numHospBed + advIndexIndusStruc + 
+                pro2industryGdp + pro3industryGdp,
+              data = trainU)
+    
+    pre1 <- predict(lm1, testU)
+    if (!all(complete.cases(pre1))) {
+      print(pre1)
+    }
+    #print(pre1)
+    tempdatalm[which(!complete.cases(tempdatalm$socSecEmployExpend)), socSecEmployExpendNameIndex] <- pre1    
+  }
+  
+  trainU <- tempdatalm[which(complete.cases(tempdatalm$nonAgriDevDegree)), ]
+  testU <- tempdatalm[which(!complete.cases(tempdatalm$nonAgriDevDegree)), ]
+  
+  if (dim(testU)[1] != 0) {
+    print(paste("我执行了4", i, sep = "-"))
+    lm1 <- lm(nonAgriDevDegree ~ amoforeCapUtil + libCollect + foreTradeCoef + realGdpPerCapita,
+              data = trainU)
+    pre1 <- predict(lm1, testU)
+    #print(pre1)
+    tempdatalm[which(!complete.cases(tempdatalm$nonAgriDevDegree)), nonAgriDevDegreeNameIndex] <- pre1    
+  }
+  
+
+  trainU <- tempdatalm[which(complete.cases(tempdatalm$ratIndexIndusStruc)), ]
+  testU <- tempdatalm[which(!complete.cases(tempdatalm$ratIndexIndusStruc)), ]
+  
+  if (dim(testU)[1] != 0) {
+    print(paste("我执行了5", i, sep = "-"))
+    lm1 <- lm(ratIndexIndusStruc ~ amoforeCapUtil + libCollect + foreTradeCoef + realGdpPerCapita,
+              data = trainU)
+    pre1 <- predict(lm1, testU)
+    #print(pre1)
+    #print(pre1)
+    tempdatalm[which(!complete.cases(tempdatalm$ratIndexIndusStruc)), ratIndexIndusStrucNameIndex] <- pre1    
+  }  
+  
+  mydataTemp2[which(mydataTemp2$city %in% cityname2[(numlib[i]+1):numlib[i+1]]), ] <- tempdatalm
+}
+
+
+# [1] "我执行了1-1"
+# [1] "我执行了4-1"
+# [1] "我执行了5-1"
+# [1] "我执行了1-2"
+# [1] "我执行了2-2"
+# [1] "我执行了1-3"
+# [1] "我执行了2-3"
+# [1] "我执行了3-3"
+# [1] "我执行了4-3"
+# [1] "我执行了5-3"
+
+```
+
+
+<br>
+
+绘制缺失值图：
+
+```{r}
+#第三次清理完毕
+aggr(mydataTemp2, prop = F, numbers = T)
+
+```
+
+
+
+```{r}
+length(which(complete.cases(mydataTemp2))) #1077
+dim(mydataTemp2)
+
+
+missingdf <- as.data.frame(abs(is.na(mydataTemp2)))
+varmissing <- apply(missingdf, 2, sum)
+varmissing
+
+
+   #             city                year    realGdpPerCapita       gdpGrowthRate    InvestOutputRate 
+   #                0                   0                   0                   0                   2 
+   #        proSocLab     pro2industryGdp     pro3industryGdp  advIndexIndusStruc  ratIndexIndusStruc 
+   #                0                   0                   0                   0                  23 
+   # nonAgriDevDegree incomeRatUrbanRural            urbanRat regUrbanUnemployRat proTechEduExpendGdp 
+   #               23                   5                 377                   0                   0 
+   #   amoforeCapUtil       foreTradeCoef       numCollegeStu   PowConsumpPerGdpL    dischaIndusWaste 
+   #                2                   6                  35                   1                  10 
+   #    greenCoverRat          libCollect          numHospBed  socSecEmployExpend 
+   #                3                   2                   4                  25 
+
+```
+
+
+可以看到进行填补之后, 我们有1057条完整数据, 对于剩下的几个缺失值, 我们单独对其进行处理.现在, 我们直接对剩下的43条数据分别进行均值填补.
+
+首先, 我们查看剩下的缺失值：
+```{r}
+mydataTemp2[which(!complete.cases(mydataTemp2)), c(1:2, 5, 10:13, 16:23)]
+
+```
+
+
+
+<br>
+
+均值填补:
+
+```{r}
+
+cityname3 <- unique(mydataTemp2[which(!complete.cases(mydataTemp2)), "city"])
+missingdf <- as.data.frame(abs(is.na(mydataTemp2)))
+varmissing <- apply(missingdf, 2, sum)
+lossingNum <- which(varmissing > 0)
+mydataTemp3 <- mydataTemp2
+for (itemCity in cityname3) {
+  for (itemValue in lossingNum) {
+    tempSerise <- mydataTemp3[which(mydataTemp3$city == itemCity), itemValue]
+    if (sum(is.na(tempSerise)) > 0) {
+      meanTemp <- mean(tempSerise, na.rm = T)
+      tempSerise[is.na(tempSerise)] <- meanTemp
+      mydataTemp3[which(mydataTemp3$city == itemCity), itemValue] <- tempSerise
+    }
+  }
+}
+
+
+```
+
+
+绘制缺失值图:
+
+```{r}
+aggr(mydataTemp3, prop = F, numbers = T)
+```
+
+可以看到, 缺失值已经全部被填补.
+
+
+输出填补结果：
+
+```{r}
+write.csv(mydataTemp3, "../output/mydataTemp3.csv")
+```
+
+

@@ -1,0 +1,43 @@
+---
+title: "README"
+author: "goatbishop"
+date: "2020年8月11日"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    highlight: pygments
+---
+
+## 文档说明书
+
+
+<br>
+
+
+### 项目目录结构
+
+
+- R/
+  - main.R : 全局空间自相关
+  - cityRank.R : 城市排名
+  - entropyM0811.R : 熵值法(淮河经济带城市)
+  - scoreYear.R : 每年二级指标的得分
+  - DataPrepro0923.R：数据预处理0923
+  - PrincipalComponent.R: 主成分+变异系数法求权重及得分
+  
+- output/
+  - gradeMatrix.csv : 城市分类排名结果
+  - moiMat.csv : 莫兰指数
+  - weightNew.csv : 淮河经济带在不同年份下每个指标的权重
+  - scoreCityYearNew.csv ： 淮河经济带的城市每年的得分
+  - scoreYearNew.csv : 淮河经济带每年每个二级指标的得分
+  - weight1020.csv: 主成分及变异系数的平均权重
+  - weightObj_cv1020.csv: 变异系数法权重
+  - weightObj1020.csv: 主成分法权重
+  - score1020.csv: 主成分及变异系数的平均权重下各个城市每年的得分
+  
+- score.csv : 71个城市得分数据文件
+- newLL.csv : 71个城市的经纬度数据
+- data0811.csv : 25个城市2005-2018年的数据
