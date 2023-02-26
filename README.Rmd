@@ -1,30 +1,14 @@
----
-title: "README"
-author: "goatbishop"
-date: "2020年8月11日"
-output: 
-  html_document:
-    toc: true
-    toc_float: true
-    theme: cosmo
-    highlight: pygments
----
-
-## 文档说明书
 
 
-<br>
-
-
-### 项目目录结构
+## Project catalogue structure
 
 
 - R/
-  - main.R : 全局空间自相关
-  - cityRank.R : 城市排名
-  - entropyM0811.R : 熵值法(淮河经济带城市)
-  - scoreYear.R : 每年二级指标的得分
-  - DataPrepro0923.R：数据预处理0923
-  - PrincipalComponent.R: 主成分+变异系数法求权重及得分
+  - main.R : Global spatial autocorrelation
+  - cityRank.R : City Rankings
+  - entropyM0811.R : Entropy Method (Huaihe Economic Zone Cities)
+  - scoreYear.R : Score for secondary indicators per year
+  - DataPrepro0923.R：Data pre-processing
+  - PrincipalComponent.R: Principal component + coefficient of variation method for weighting and score
   
 
